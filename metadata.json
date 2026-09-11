@@ -1,0 +1,6 @@
+{
+  "name": "IP Asset Tracker",
+  "description": "Desktop Intellectual Property dashboard to track patents, trademarks, and designs with status metrics, document previews, brand world maps, and Google Sheets synchronization.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
