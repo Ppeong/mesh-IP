@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { BrandName } from '../types';
+import { BrandName, IPAsset } from '../types';
 import { SMOOTH_WORLD_COUNTRIES, WorldCountryFeature } from '../data/worldMapData';
 import {
   CheckCircle2,
@@ -11,15 +11,19 @@ import {
   RotateCcw,
   MapPin,
   Sparkles,
+  ExternalLink,
+  Layers,
 } from 'lucide-react';
 
 interface BrandWorldMapProps {
   initialBrand?: BrandName;
+  assets?: IPAsset[];
   customMapStatus?: Record<string, { registered: string[]; pending: string[] }>;
   onSelectCountry?: (countryCode: string) => void;
+  onSelectAsset?: (asset: IPAsset) => void;
 }
 
-// Default territorial rights portfolio for UNIQ, Skinarma, Energea
+// Default territorial baseline portfolio for UNIQ, Skinarma, Energea
 const DEFAULT_BRAND_PORTFOLIOS: Record<BrandName, { registered: string[]; pending: string[] }> = {
   UNIQ: {
     registered: ['SG', 'US', 'MY', 'ID', 'TH', 'VN', 'PH', 'JP', 'KR', 'DE', 'GB', 'AU', 'CA', 'AE'],
@@ -33,6 +37,55 @@ const DEFAULT_BRAND_PORTFOLIOS: Record<BrandName, { registered: string[]; pendin
     registered: ['SG', 'MY', 'ID', 'TH', 'PH', 'VN', 'CN', 'US', 'AE'],
     pending: ['GB', 'DE', 'JP', 'KR', 'AU', 'IN', 'SA'],
   },
+};
+
+// Common Country name to ISO-2 Code mapping for flawless sync with database entries
+const COUNTRY_NAME_TO_CODE: Record<string, string> = {
+  singapore: 'SG',
+  'united states': 'US',
+  usa: 'US',
+  china: 'CN',
+  japan: 'JP',
+  'south korea': 'KR',
+  korea: 'KR',
+  germany: 'DE',
+  'united kingdom': 'GB',
+  uk: 'GB',
+  australia: 'AU',
+  malaysia: 'MY',
+  canada: 'CA',
+  france: 'FR',
+  italy: 'IT',
+  spain: 'ES',
+  thailand: 'TH',
+  vietnam: 'VN',
+  indonesia: 'ID',
+  philippines: 'PH',
+  brazil: 'BR',
+  mexico: 'MX',
+  india: 'IN',
+  'saudi arabia': 'SA',
+  'united arab emirates': 'AE',
+  uae: 'AE',
+  'hong kong': 'HK',
+  taiwan: 'TW',
+  switzerland: 'CH',
+  netherlands: 'NL',
+  sweden: 'SE',
+  turkey: 'TR',
+  egypt: 'EG',
+  qatar: 'QA',
+  bahrain: 'BH',
+};
+
+const resolveCountryCode = (countryName: string, code?: string): string => {
+  if (code && code.trim().length === 2) return code.trim().toUpperCase();
+  const normalized = countryName.trim().toLowerCase();
+  if (COUNTRY_NAME_TO_CODE[normalized]) return COUNTRY_NAME_TO_CODE[normalized];
+  const found = SMOOTH_WORLD_COUNTRIES.find(
+    (c) => c.name.toLowerCase() === normalized || c.code.toLowerCase() === normalized
+  );
+  return found?.code || '';
 };
 
 // Micro-jurisdictions that benefit from an explicit circular beacon dot on the world map
@@ -52,8 +105,10 @@ const REGION_PRESETS: RegionPreset[] = [
 
 export const BrandWorldMap: React.FC<BrandWorldMapProps> = ({
   initialBrand = 'UNIQ',
+  assets = [],
   customMapStatus,
   onSelectCountry,
+  onSelectAsset,
 }) => {
   const [selectedBrand, setSelectedBrand] = useState<BrandName>(initialBrand);
   const [hoveredCountry, setHoveredCountry] = useState<WorldCountryFeature | null>(null);
@@ -64,29 +119,77 @@ export const BrandWorldMap: React.FC<BrandWorldMapProps> = ({
   const [selectedCountryTag, setSelectedCountryTag] = useState<string | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
-  // Active brand coverage data
+  // Derive territorial rights synchronized directly with the database table assets
   const currentBrandData = useMemo(() => {
-    if (customMapStatus && customMapStatus[selectedBrand]) {
-      return customMapStatus[selectedBrand];
-    }
-    return DEFAULT_BRAND_PORTFOLIOS[selectedBrand];
-  }, [customMapStatus, selectedBrand]);
+    // 1. Start with baseline portfolio
+    const base = customMapStatus?.[selectedBrand] || DEFAULT_BRAND_PORTFOLIOS[selectedBrand];
+    const registeredSet = new Set<string>(base.registered);
+    const pendingSet = new Set<string>(base.pending);
 
-  // Color logic according to Pastel palette:
+    // 2. Filter assets for this brand from the database table
+    const brandAssets = assets.filter((a) => a.brand === selectedBrand);
+
+    // 3. Group assets by country code
+    const countryAssetsMap = new Map<string, IPAsset[]>();
+    brandAssets.forEach((a) => {
+      const cCode = resolveCountryCode(a.country, a.countryCode);
+      if (cCode) {
+        if (!countryAssetsMap.has(cCode)) {
+          countryAssetsMap.set(cCode, []);
+        }
+        countryAssetsMap.get(cCode)!.push(a);
+      }
+    });
+
+    // 4. Synchronize status with database table:
+    countryAssetsMap.forEach((cAssets, cCode) => {
+      const hasRegistered = cAssets.some((a) => a.status === 'Registered');
+      const hasPending = cAssets.some(
+        (a) =>
+          a.status === 'Pending Examination' ||
+          a.status === 'To Be Filed' ||
+          a.status === 'Refusal Responded' ||
+          a.status === 'Refusal'
+      );
+      const allAbandoned = cAssets.length > 0 && cAssets.every((a) => a.status === 'Abandoned');
+
+      if (hasRegistered) {
+        registeredSet.add(cCode);
+        pendingSet.delete(cCode);
+      } else if (hasPending) {
+        if (!registeredSet.has(cCode)) {
+          pendingSet.add(cCode);
+        }
+      } else if (allAbandoned) {
+        registeredSet.delete(cCode);
+        pendingSet.delete(cCode);
+      }
+    });
+
+    return {
+      registered: Array.from(registeredSet),
+      pending: Array.from(pendingSet),
+      countryAssetsMap,
+    };
+  }, [assets, customMapStatus, selectedBrand]);
+
+  // Color logic according to requested palette:
   // - Registered mark: #C1E9D7 (Pastel Green)
-  // - Filed / pending registration: #D9C9EB (Pastel Purple)
-  // - Rest: #FFFFFF (white)
+  // - Filed / pending registration: #FFF4B0 (Pastel Yellow)
+  // - Rest: #FFFFFF (White)
   const getCountryFill = (countryCode: string): string => {
     if (currentBrandData.registered.includes(countryCode)) {
       return '#C1E9D7';
     }
     if (currentBrandData.pending.includes(countryCode)) {
-      return '#D9C9EB';
+      return '#FFF4B0';
     }
     return '#FFFFFF';
   };
 
   const getCountryStatusMeta = (countryCode: string) => {
+    const dbAssets = currentBrandData.countryAssetsMap.get(countryCode) || [];
+
     if (currentBrandData.registered.includes(countryCode)) {
       return {
         status: 'Registered Mark',
@@ -95,16 +198,18 @@ export const BrandWorldMap: React.FC<BrandWorldMapProps> = ({
         badgeBorder: 'border-[#A5D8C1]',
         dotColor: '#164E39',
         description: 'Trademark/Patent grant in force with statutory protection.',
+        dbAssets,
       };
     }
     if (currentBrandData.pending.includes(countryCode)) {
       return {
         status: 'Filed / Pending Registration',
-        color: 'text-[#3F2B5B]',
-        bg: 'bg-[#D9C9EB]',
-        badgeBorder: 'border-[#C5B3DC]',
-        dotColor: '#593E7C',
+        color: 'text-[#854D0E]',
+        bg: 'bg-[#FFF4B0]',
+        badgeBorder: 'border-[#F2DF7E]',
+        dotColor: '#CA8A04',
         description: 'Application submitted, undergoing formal examination or publication.',
+        dbAssets,
       };
     }
     return {
@@ -114,6 +219,7 @@ export const BrandWorldMap: React.FC<BrandWorldMapProps> = ({
       badgeBorder: 'border-[#B2D4EB]/40',
       dotColor: '#4A6B82',
       description: 'No active trademark or patent registration in this jurisdiction.',
+      dbAssets,
     };
   };
 
@@ -160,6 +266,15 @@ export const BrandWorldMap: React.FC<BrandWorldMapProps> = ({
     }
   };
 
+  // Count total assets in database synced for this brand
+  const totalBrandAssetsInDb = useMemo(() => {
+    let count = 0;
+    currentBrandData.countryAssetsMap.forEach((list) => {
+      count += list.length;
+    });
+    return count;
+  }, [currentBrandData]);
+
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Brand Selection Tabs Bar */}
@@ -171,7 +286,7 @@ export const BrandWorldMap: React.FC<BrandWorldMapProps> = ({
               <span>Global Intellectual Property Territory Map</span>
             </h2>
             <p className="text-[10px] sm:text-xs text-[#4A6B82] mt-0.5 leading-snug">
-              Accurate smooth geographic world map projection with trademark & patent registration tracking
+              Accurate smooth geographic world map projection synced live with database IP assets
             </p>
           </div>
 
@@ -200,28 +315,26 @@ export const BrandWorldMap: React.FC<BrandWorldMapProps> = ({
         {/* Legend bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mt-3.5 sm:mt-6 pt-3 sm:pt-5 border-t border-[#B2D4EB]/40 text-[10px] sm:text-xs">
           <div className="flex flex-wrap items-center gap-2.5 sm:gap-6">
-            {/* Registered Mark */}
+            {/* Registered Mark (Green) */}
             <div className="flex items-center gap-1.5 sm:gap-2">
               <span
                 className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded border border-[#85C7AB] shadow-2xs shrink-0"
                 style={{ backgroundColor: '#C1E9D7' }}
               />
               <span className="font-semibold text-[#252525]">Registered</span>
-              <span className="text-[#4A6B82] font-mono text-[9.5px] sm:text-[11px]">(#C1E9D7)</span>
               <span className="bg-[#C1E9D7] border border-[#A7DEC6] px-1.5 sm:px-2 py-0.5 rounded-full font-bold text-[#164E39] text-[9px] sm:text-[10px]">
                 {currentBrandData.registered.length}
               </span>
             </div>
 
-            {/* Filed / Pending Registration */}
+            {/* Filed / Pending Registration (Yellow) */}
             <div className="flex items-center gap-1.5 sm:gap-2">
               <span
-                className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded border border-[#BA9FD6] shadow-2xs shrink-0"
-                style={{ backgroundColor: '#D9C9EB' }}
+                className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded border border-[#ECC94B] shadow-2xs shrink-0"
+                style={{ backgroundColor: '#FFF4B0' }}
               />
-              <span className="font-semibold text-[#252525]">Filed/Pending</span>
-              <span className="text-[#4A6B82] font-mono text-[9.5px] sm:text-[11px]">(#D9C9EB)</span>
-              <span className="bg-[#D9C9EB] border border-[#C5B3DC] px-1.5 sm:px-2 py-0.5 rounded-full font-bold text-[#3F2B5B] text-[9px] sm:text-[10px]">
+              <span className="font-semibold text-[#252525]">Filed / Pending</span>
+              <span className="bg-[#FFF4B0] border border-[#F2DF7E] px-1.5 sm:px-2 py-0.5 rounded-full font-bold text-[#854D0E] text-[9px] sm:text-[10px]">
                 {currentBrandData.pending.length}
               </span>
             </div>
@@ -236,10 +349,10 @@ export const BrandWorldMap: React.FC<BrandWorldMapProps> = ({
             </div>
           </div>
 
-          {/* Quick Info Pill */}
+          {/* Quick Info Pill with Database Sync Status */}
           <div className="text-[10px] sm:text-[11px] text-[#1C3A50] bg-[#B2D4EB]/50 border border-[#B2D4EB] px-2.5 sm:px-3 py-1 rounded-full font-medium flex items-center gap-1.5 shrink-0 self-start sm:self-auto">
-            <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#1C3A50]" />
-            <span>Natural Earth Vector Projection</span>
+            <Layers className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#1C3A50]" />
+            <span>Synced with Database ({totalBrandAssetsInDb} assets)</span>
           </div>
         </div>
       </div>
@@ -253,7 +366,7 @@ export const BrandWorldMap: React.FC<BrandWorldMapProps> = ({
               Jurisdiction: {selectedBrand}
             </span>
             <span className="text-[10px] sm:text-xs text-[#4A6B82]">
-              • {currentBrandData.registered.length + currentBrandData.pending.length} Territories
+              • {currentBrandData.registered.length + currentBrandData.pending.length} Active Territories
             </span>
           </div>
 
@@ -317,10 +430,6 @@ export const BrandWorldMap: React.FC<BrandWorldMapProps> = ({
               <pattern id="oceanCoordGrid" width="30" height="30" patternUnits="userSpaceOnUse">
                 <path d="M 30 0 L 0 0 0 30" fill="none" stroke="#4A6B82" strokeWidth="0.25" strokeOpacity="0.12" />
               </pattern>
-              {/* Radial glow filter for beacons */}
-              <filter id="beaconGlow" x="-50%" y="-50%" width="200%" height="200%">
-                <feDropShadow dx="0" dy="0" stdDeviation="1.5" floodColor="#164E39" floodOpacity="0.4" />
-              </filter>
             </defs>
 
             {/* Ocean Basin Background */}
@@ -352,7 +461,7 @@ export const BrandWorldMap: React.FC<BrandWorldMapProps> = ({
                 strokeColor = '#85C7AB';
                 strokeWidth = 0.9;
               } else if (isPending) {
-                strokeColor = '#BA9FD6';
+                strokeColor = '#E6C84F';
                 strokeWidth = 0.9;
               }
 
@@ -387,7 +496,7 @@ export const BrandWorldMap: React.FC<BrandWorldMapProps> = ({
               if (hub.cx <= 0 || hub.cy <= 0) return null;
               const isReg = currentBrandData.registered.includes(hub.code);
               const isPend = currentBrandData.pending.includes(hub.code);
-              const pinColor = isReg ? '#164E39' : isPend ? '#593E7C' : '#4A6B82';
+              const pinColor = isReg ? '#164E39' : isPend ? '#CA8A04' : '#4A6B82';
               const isHovered = hoveredCountry?.code === hub.code;
 
               return (
@@ -418,7 +527,7 @@ export const BrandWorldMap: React.FC<BrandWorldMapProps> = ({
                     cx={hub.cx}
                     cy={hub.cy}
                     r={isHovered ? 4 : 3}
-                    fill={isReg ? '#C1E9D7' : isPend ? '#D9C9EB' : '#FFFFFF'}
+                    fill={isReg ? '#C1E9D7' : isPend ? '#FFF4B0' : '#FFFFFF'}
                     stroke={pinColor}
                     strokeWidth={1.2}
                   />
@@ -443,8 +552,8 @@ export const BrandWorldMap: React.FC<BrandWorldMapProps> = ({
             <div
               className="absolute z-20 pointer-events-none bg-white/95 backdrop-blur-xs px-3.5 py-2.5 rounded-xl border border-[#B2D4EB]/60 shadow-lg text-xs transition-transform duration-75 max-w-xs"
               style={{
-                left: `${Math.min(tooltipPos.x + 15, (mapContainerRef.current?.clientWidth || 800) - 230)}px`,
-                top: `${Math.max(tooltipPos.y - 65, 15)}px`,
+                left: `${Math.min(tooltipPos.x + 15, (mapContainerRef.current?.clientWidth || 800) - 260)}px`,
+                top: `${Math.max(tooltipPos.y - 75, 15)}px`,
               }}
             >
               <div className="flex items-center justify-between gap-2 border-b border-[#B2D4EB]/30 pb-1.5 mb-1.5">
@@ -467,27 +576,43 @@ export const BrandWorldMap: React.FC<BrandWorldMapProps> = ({
               <p className="text-[10px] text-[#4A6B82] mt-0.5">
                 {getCountryStatusMeta(hoveredCountry.code).description}
               </p>
+
+              {/* Database Assets info if present */}
+              {getCountryStatusMeta(hoveredCountry.code).dbAssets.length > 0 && (
+                <div className="mt-2 pt-1.5 border-t border-[#B2D4EB]/30 space-y-1">
+                  <span className="text-[10px] font-bold text-[#1C3A50] block">
+                    Database Assets ({getCountryStatusMeta(hoveredCountry.code).dbAssets.length}):
+                  </span>
+                  {getCountryStatusMeta(hoveredCountry.code).dbAssets.map((asset) => (
+                    <div key={asset.id} className="text-[10px] text-[#252525] flex items-center justify-between gap-1">
+                      <span className="truncate font-medium">{asset.assetName}</span>
+                      <span className="font-mono text-[#4A6B82] shrink-0 text-[9px]">({asset.status})</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
 
         {/* Territory Status Breakdown Table for Selected Brand */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mt-4 sm:mt-6">
-          {/* Registered List */}
+          {/* Registered List (Green) */}
           <div className="bg-[#C1E9D7]/20 rounded-xl p-3.5 sm:p-4 border border-[#C1E9D7]">
             <div className="flex flex-wrap items-center justify-between gap-1.5 mb-2.5 sm:mb-3">
               <span className="text-[11px] sm:text-xs font-bold text-[#164E39] uppercase tracking-wider flex items-center gap-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#164E39] shrink-0" />
                 Registered Countries ({currentBrandData.registered.length})
               </span>
-              <span className="text-[10px] sm:text-[11px] font-mono text-[#164E39] bg-[#C1E9D7] px-2 py-0.5 rounded border border-[#A7DEC6]">
-                #C1E9D7 Green
+              <span className="text-[10px] sm:text-[11px] font-medium text-[#164E39] bg-[#C1E9D7] px-2 py-0.5 rounded-full border border-[#A7DEC6]">
+                Registered
               </span>
             </div>
             <div className="flex flex-wrap gap-1.5 sm:gap-2">
               {Array.from(new Set(currentBrandData.registered)).map((c, i) => {
                 const geo = SMOOTH_WORLD_COUNTRIES.find((g) => g.code === c);
                 const isSelected = selectedCountryTag === c;
+                const dbCount = currentBrandData.countryAssetsMap.get(c)?.length || 0;
                 return (
                   <button
                     key={`reg-${c}-${i}`}
@@ -495,34 +620,42 @@ export const BrandWorldMap: React.FC<BrandWorldMapProps> = ({
                       setSelectedCountryTag(c);
                       if (onSelectCountry) onSelectCountry(c);
                     }}
-                    className={`px-2 sm:px-2.5 py-0.5 sm:py-1 rounded text-[11px] sm:text-xs font-semibold shadow-2xs border transition-all ${
+                    className={`px-2 sm:px-2.5 py-0.5 sm:py-1 rounded text-[11px] sm:text-xs font-semibold shadow-2xs border transition-all flex items-center gap-1 ${
                       isSelected
                         ? 'bg-[#164E39] text-white border-[#164E39] scale-105'
                         : 'bg-[#C1E9D7] text-[#164E39] border-[#A7DEC6] hover:bg-[#A9DEC7]'
                     }`}
                   >
-                    {geo ? geo.name : c} ({c})
+                    <span>{geo ? geo.name : c} ({c})</span>
+                    {dbCount > 0 && (
+                      <span className={`text-[9px] px-1 py-0.2 rounded-full font-bold ${
+                        isSelected ? 'bg-white text-[#164E39]' : 'bg-[#164E39] text-white'
+                      }`}>
+                        {dbCount}
+                      </span>
+                    )}
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {/* Filed / Pending List */}
-          <div className="bg-[#D9C9EB]/20 rounded-xl p-3.5 sm:p-4 border border-[#D9C9EB]">
+          {/* Filed / Pending List (Yellow) */}
+          <div className="bg-[#FFF4B0]/25 rounded-xl p-3.5 sm:p-4 border border-[#F2DF7E]">
             <div className="flex flex-wrap items-center justify-between gap-1.5 mb-2.5 sm:mb-3">
-              <span className="text-[11px] sm:text-xs font-bold text-[#3F2B5B] uppercase tracking-wider flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#593E7C] shrink-0" />
+              <span className="text-[11px] sm:text-xs font-bold text-[#854D0E] uppercase tracking-wider flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#CA8A04] shrink-0" />
                 Filed / Pending Countries ({currentBrandData.pending.length})
               </span>
-              <span className="text-[10px] sm:text-[11px] font-mono text-[#3F2B5B] bg-[#D9C9EB] px-2 py-0.5 rounded border border-[#C5B3DC]">
-                #D9C9EB Purple
+              <span className="text-[10px] sm:text-[11px] font-medium text-[#854D0E] bg-[#FFF4B0] px-2 py-0.5 rounded-full border border-[#F2DF7E]">
+                Pending
               </span>
             </div>
             <div className="flex flex-wrap gap-1.5 sm:gap-2">
               {Array.from(new Set(currentBrandData.pending)).map((c, i) => {
                 const geo = SMOOTH_WORLD_COUNTRIES.find((g) => g.code === c);
                 const isSelected = selectedCountryTag === c;
+                const dbCount = currentBrandData.countryAssetsMap.get(c)?.length || 0;
                 return (
                   <button
                     key={`pend-${c}-${i}`}
@@ -530,13 +663,20 @@ export const BrandWorldMap: React.FC<BrandWorldMapProps> = ({
                       setSelectedCountryTag(c);
                       if (onSelectCountry) onSelectCountry(c);
                     }}
-                    className={`px-2 sm:px-2.5 py-0.5 sm:py-1 rounded text-[11px] sm:text-xs font-semibold shadow-2xs border transition-all ${
+                    className={`px-2 sm:px-2.5 py-0.5 sm:py-1 rounded text-[11px] sm:text-xs font-semibold shadow-2xs border transition-all flex items-center gap-1 ${
                       isSelected
-                        ? 'bg-[#3F2B5B] text-white border-[#3F2B5B] scale-105'
-                        : 'bg-[#D9C9EB] text-[#3F2B5B] border-[#C5B3DC] hover:bg-[#CDC0E2]'
+                        ? 'bg-[#854D0E] text-white border-[#854D0E] scale-105'
+                        : 'bg-[#FFF4B0] text-[#854D0E] border-[#F2DF7E] hover:bg-[#FDF09D]'
                     }`}
                   >
-                    {geo ? geo.name : c} ({c})
+                    <span>{geo ? geo.name : c} ({c})</span>
+                    {dbCount > 0 && (
+                      <span className={`text-[9px] px-1 py-0.2 rounded-full font-bold ${
+                        isSelected ? 'bg-white text-[#854D0E]' : 'bg-[#854D0E] text-white'
+                      }`}>
+                        {dbCount}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -548,7 +688,7 @@ export const BrandWorldMap: React.FC<BrandWorldMapProps> = ({
         <div className="mt-3.5 sm:mt-4 flex items-start sm:items-center gap-2 text-[10px] sm:text-xs text-[#4A6B82] bg-[#F5F8FA] p-2.5 sm:p-3 rounded-xl border border-[#B2D4EB]/50 leading-relaxed">
           <Info className="w-4 h-4 text-[#4A6B82] shrink-0 mt-0.5 sm:mt-0" />
           <span>
-            Territorial coverage for <strong>{selectedBrand}</strong> is synced with National IP Registries (IPOS, USPTO, JPO, KIPO, EUIPO, CNIPA) and WIPO Madrid Protocol international filings.
+            Territorial coverage for <strong>{selectedBrand}</strong> is synced directly with your database table assets as well as statutory international filings (WIPO Madrid Protocol, IPOS, USPTO, JPO, EUIPO).
           </span>
         </div>
       </div>

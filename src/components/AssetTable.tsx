@@ -15,12 +15,19 @@ import {
   RefreshCw,
   FileSpreadsheet,
   CheckCircle2,
+  Trash2,
+  CheckSquare,
+  Square,
+  Check,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
 
 interface AssetTableProps {
   assets: IPAsset[];
   onSelectAsset: (asset: IPAsset) => void;
   onOpenAddModal: () => void;
+  onDeleteAssets?: (assetIds: string[]) => void;
   filterBrand?: BrandName | 'All';
   onFilterBrandChange?: (brand: BrandName | 'All') => void;
 }
@@ -29,6 +36,7 @@ export const AssetTable: React.FC<AssetTableProps> = ({
   assets,
   onSelectAsset,
   onOpenAddModal,
+  onDeleteAssets,
   filterBrand = 'All',
   onFilterBrandChange,
 }) => {
@@ -39,6 +47,12 @@ export const AssetTable: React.FC<AssetTableProps> = ({
   const [sortField, setSortField] = useState<'assetName' | 'filingDate' | 'renewalDueDate' | 'country' | 'registrationDate' | 'applicationNumber' | 'firmAgent' | 'applicant'>('renewalDueDate');
   const [sortAsc, setSortAsc] = useState(true);
   const [exportNotification, setExportNotification] = useState<string | null>(null);
+
+  // Multi-select & Batch Deletion state
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
 
   const handleExportToExcel = () => {
     try {
@@ -54,6 +68,38 @@ export const AssetTable: React.FC<AssetTableProps> = ({
     } catch (err) {
       console.error('Failed to export to Excel:', err);
     }
+  };
+
+  const handleToggleRow = (id: string) => {
+    setSelectedAssetIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllFiltered = () => {
+    if (selectedAssetIds.size === filteredAssets.length) {
+      setSelectedAssetIds(new Set());
+    } else {
+      setSelectedAssetIds(new Set(filteredAssets.map((a) => a.id)));
+    }
+  };
+
+  const handleConfirmDelete = () => {
+    const ids = Array.from(selectedAssetIds);
+    if (ids.length === 0) return;
+    if (onDeleteAssets) {
+      onDeleteAssets(ids);
+    }
+    setDeleteNotice(`Successfully deleted ${ids.length} asset${ids.length > 1 ? 's' : ''} from the database.`);
+    setTimeout(() => setDeleteNotice(null), 4500);
+    setSelectedAssetIds(new Set());
+    setIsDeleteDialogOpen(false);
   };
 
   // Extract unique countries
@@ -133,6 +179,11 @@ export const AssetTable: React.FC<AssetTableProps> = ({
     if (onFilterBrandChange) onFilterBrandChange('All');
   };
 
+  // Selected items preview for confirmation modal
+  const selectedAssetsPreview = useMemo(() => {
+    return assets.filter((a) => selectedAssetIds.has(a.id));
+  }, [assets, selectedAssetIds]);
+
   return (
     <div className="bg-white rounded-2xl border border-[#B2D4EB]/50 shadow-xs overflow-hidden">
       {/* Table Controls & Filters Header */}
@@ -140,7 +191,7 @@ export const AssetTable: React.FC<AssetTableProps> = ({
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4">
           <div className="min-w-0">
             <h2 className="text-base sm:text-lg font-bold text-[#252525] flex flex-wrap items-center gap-1.5 sm:gap-2">
-              <span>Database Table: IP Assets</span>
+              <span>Database Table</span>
               <span className="text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 rounded-full bg-[#B2D4EB]/60 text-[#1C3A50] border border-[#B2D4EB]">
                 {filteredAssets.length} of {assets.length} items
               </span>
@@ -151,7 +202,37 @@ export const AssetTable: React.FC<AssetTableProps> = ({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            {/* Multi-Select Edit Toggle Button */}
+            <button
+              id="toggle-select-mode-btn"
+              onClick={() => {
+                const nextMode = !isSelectMode;
+                setIsSelectMode(nextMode);
+                if (!nextMode) {
+                  setSelectedAssetIds(new Set());
+                }
+              }}
+              className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl text-[11px] sm:text-xs font-bold transition-colors shadow-xs ${
+                isSelectMode
+                  ? 'bg-[#1C3A50] text-white hover:bg-[#152e40] border border-[#1C3A50]'
+                  : 'bg-white hover:bg-[#F5F8FA] text-[#4A6B82] hover:text-[#1C3A50] border border-[#B2D4EB]'
+              }`}
+              title={isSelectMode ? 'Exit selection mode' : 'Select multiple assets to delete'}
+            >
+              {isSelectMode ? (
+                <>
+                  <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-[#B2D4EB]" />
+                  <span>Done Selecting</span>
+                </>
+              ) : (
+                <>
+                  <CheckSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-[#4A6B82]" />
+                  <span>Edit / Select</span>
+                </>
+              )}
+            </button>
+
             <button
               id="export-excel-btn"
               onClick={handleExportToExcel}
@@ -178,6 +259,60 @@ export const AssetTable: React.FC<AssetTableProps> = ({
           <div className="flex items-center gap-2 px-3 sm:px-3.5 py-2 bg-[#C1E9D7]/30 text-[#164E39] border border-[#C1E9D7] rounded-lg text-xs font-medium animate-fadeIn">
             <CheckCircle2 className="w-4 h-4 text-[#164E39] shrink-0" />
             <span>{exportNotification}</span>
+          </div>
+        )}
+
+        {/* Delete Success Toast */}
+        {deleteNotice && (
+          <div className="flex items-center gap-2 px-3 sm:px-3.5 py-2 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-medium animate-fadeIn">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{deleteNotice}</span>
+          </div>
+        )}
+
+        {/* Multi-Select Action Banner (appears when Edit/Select mode is active) */}
+        {isSelectMode && (
+          <div className="bg-[#1C3A50] text-white p-3 sm:p-3.5 rounded-xl shadow-md border border-[#4A6B82] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 sm:gap-4 animate-fadeIn">
+            <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm">
+              <span className="font-bold bg-white/20 px-2.5 py-0.5 rounded text-white text-[11px] sm:text-xs">
+                {selectedAssetIds.size} Selected
+              </span>
+              <span className="text-white/80 text-[11px] sm:text-xs">
+                out of {filteredAssets.length} displayed
+              </span>
+              <button
+                id="select-all-filtered-btn"
+                onClick={handleSelectAllFiltered}
+                className="text-xs text-[#B2D4EB] hover:text-white font-semibold underline ml-1 cursor-pointer"
+              >
+                {selectedAssetIds.size === filteredAssets.length && filteredAssets.length > 0
+                  ? 'Deselect All'
+                  : 'Select All'}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <button
+                id="delete-selected-btn"
+                disabled={selectedAssetIds.size === 0}
+                onClick={() => setIsDeleteDialogOpen(true)}
+                className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 sm:py-2 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-700 disabled:bg-rose-900/30 disabled:text-white/40 text-white shadow-xs transition-colors cursor-pointer disabled:cursor-not-allowed"
+                title="Delete all selected assets"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Selected ({selectedAssetIds.size})</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setIsSelectMode(false);
+                  setSelectedAssetIds(new Set());
+                }}
+                className="px-2.5 py-1.5 rounded-lg text-xs text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
 
@@ -281,8 +416,8 @@ export const AssetTable: React.FC<AssetTableProps> = ({
 
       {/* Mobile Swipe Hint */}
       <div className="sm:hidden px-3.5 py-1.5 bg-[#F5F8FA] text-[10px] text-[#4A6B82] flex items-center justify-between border-b border-[#B2D4EB]/30 font-medium">
-        <span>Swipe horizontally to view all 13 columns</span>
-        <span className="text-[#4A6B82] font-semibold">13 columns →</span>
+        <span>{isSelectMode ? 'Tap row to toggle selection' : 'Swipe horizontally to view all columns'}</span>
+        <span className="text-[#4A6B82] font-semibold">{isSelectMode ? `${selectedAssetIds.size} selected` : '13 columns →'}</span>
       </div>
 
       {/* Main Table */}
@@ -290,6 +425,20 @@ export const AssetTable: React.FC<AssetTableProps> = ({
         <table className="w-full text-left border-collapse text-xs">
           <thead>
             <tr className="bg-[#F5F8FA] border-b border-[#B2D4EB]/40 text-[#4A6B82] uppercase font-semibold tracking-wider text-[10px] sm:text-[11px] whitespace-nowrap">
+              {/* Checkbox Column in Multi-Select Mode */}
+              {isSelectMode && (
+                <th className="py-2.5 sm:py-3 px-3 sm:px-4 w-10 text-center">
+                  <input
+                    id="table-header-select-all"
+                    type="checkbox"
+                    checked={filteredAssets.length > 0 && selectedAssetIds.size === filteredAssets.length}
+                    onChange={handleSelectAllFiltered}
+                    className="w-4 h-4 rounded text-[#1C3A50] focus:ring-[#B2D4EB] border-[#B2D4EB] cursor-pointer"
+                    title="Select/Deselect All Filtered Assets"
+                  />
+                </th>
+              )}
+
               {/* 1. Asset Name */}
               <th className="py-2.5 sm:py-3 px-3 sm:px-4">
                 <button
@@ -377,135 +526,245 @@ export const AssetTable: React.FC<AssetTableProps> = ({
           <tbody className="divide-y divide-[#B2D4EB]/25 text-[#252525]">
             {filteredAssets.length === 0 ? (
               <tr>
-                <td colSpan={13} className="py-12 text-center text-xs sm:text-sm text-[#4A6B82]">
+                <td colSpan={isSelectMode ? 14 : 13} className="py-12 text-center text-xs sm:text-sm text-[#4A6B82]">
                   No intellectual property assets found matching the selected criteria.
                 </td>
               </tr>
             ) : (
-              filteredAssets.map((asset) => (
-                <tr
-                  key={asset.id}
-                  id={`asset-row-${asset.id}`}
-                  onClick={() => onSelectAsset(asset)}
-                  className="hover:bg-[#D9C9EB]/20 cursor-pointer transition-colors group"
-                >
-                  {/* 1. Asset Name */}
-                  <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 font-semibold text-[#252525]">
-                    <div className="flex flex-col min-w-[140px] sm:min-w-[160px]">
-                      <span className="group-hover:text-[#4A6B82] transition-colors text-xs font-semibold">
-                        {asset.assetName}
-                      </span>
-                      {asset.brand && (
-                        <span className="text-[9px] sm:text-[10px] text-[#4A6B82] font-medium">Brand: {asset.brand}</span>
-                      )}
-                    </div>
-                  </td>
-
-                  {/* 2. IP Type */}
-                  <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 whitespace-nowrap">
-                    <IPTypeBadge type={asset.ipType} />
-                  </td>
-
-                  {/* 3. Country */}
-                  <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 whitespace-nowrap text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <Globe className="w-3.5 h-3.5 text-[#4A6B82] shrink-0" />
-                      <span>{asset.country}</span>
-                      <span className="text-[10px] font-mono text-[#4A6B82]">({asset.countryCode})</span>
-                    </div>
-                  </td>
-
-                  {/* 4. Application Number */}
-                  <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 font-mono text-[#252525] whitespace-nowrap text-xs">
-                    {asset.applicationNumber}
-                  </td>
-
-                  {/* 5. Filing Date */}
-                  <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 text-[#4A6B82] whitespace-nowrap text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5 text-[#4A6B82] shrink-0" />
-                      <span>{asset.filingDate}</span>
-                    </div>
-                  </td>
-
-                  {/* 6. Classes */}
-                  <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 whitespace-nowrap">
-                    {asset.classes && asset.classes !== '-' ? (
-                      <span className="inline-block px-1.5 sm:px-2 py-0.5 rounded bg-[#F5F8FA] border border-[#B2D4EB]/50 text-[#252525] font-mono text-[10px] sm:text-[11px] font-medium">
-                        {asset.classes}
-                      </span>
-                    ) : (
-                      <span className="text-[#4A6B82] text-xs">-</span>
+              filteredAssets.map((asset) => {
+                const isSelected = selectedAssetIds.has(asset.id);
+                return (
+                  <tr
+                    key={asset.id}
+                    id={`asset-row-${asset.id}`}
+                    onClick={() => {
+                      if (isSelectMode) {
+                        handleToggleRow(asset.id);
+                      } else {
+                        onSelectAsset(asset);
+                      }
+                    }}
+                    className={`cursor-pointer transition-colors group ${
+                      isSelected
+                        ? 'bg-[#B2D4EB]/35 border-l-4 border-l-[#1C3A50]'
+                        : 'hover:bg-[#D9C9EB]/20'
+                    }`}
+                  >
+                    {/* Checkbox Cell in Multi-Select Mode */}
+                    {isSelectMode && (
+                      <td
+                        className="py-2.5 sm:py-3.5 px-3 sm:px-4 text-center"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggleRow(asset.id);
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleRow(asset.id)}
+                          className="w-4 h-4 rounded text-[#1C3A50] focus:ring-[#B2D4EB] border-[#B2D4EB] cursor-pointer"
+                        />
+                      </td>
                     )}
-                  </td>
 
-                  {/* 7. Registration Number */}
-                  <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 font-mono text-[#252525] whitespace-nowrap text-xs">
-                    {asset.registrationNumber && asset.registrationNumber !== '-' ? (
-                      asset.registrationNumber
-                    ) : (
-                      <span className="text-[#4A6B82]">-</span>
-                    )}
-                  </td>
+                    {/* 1. Asset Name */}
+                    <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 font-semibold text-[#252525]">
+                      <div className="flex flex-col min-w-[140px] sm:min-w-[160px]">
+                        <span className="group-hover:text-[#4A6B82] transition-colors text-xs font-semibold">
+                          {asset.assetName}
+                        </span>
+                        {asset.brand && (
+                          <span className="text-[9px] sm:text-[10px] text-[#4A6B82] font-medium">Brand: {asset.brand}</span>
+                        )}
+                      </div>
+                    </td>
 
-                  {/* 8. Registration Date */}
-                  <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 text-[#4A6B82] whitespace-nowrap text-xs">
-                    {asset.registrationDate && asset.registrationDate !== '-' ? (
+                    {/* 2. IP Type */}
+                    <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 whitespace-nowrap">
+                      <IPTypeBadge type={asset.ipType} />
+                    </td>
+
+                    {/* 3. Country */}
+                    <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 whitespace-nowrap text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <Globe className="w-3.5 h-3.5 text-[#4A6B82] shrink-0" />
+                        <span>{asset.country}</span>
+                        <span className="text-[10px] font-mono text-[#4A6B82]">({asset.countryCode})</span>
+                      </div>
+                    </td>
+
+                    {/* 4. Application Number */}
+                    <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 font-mono text-[#252525] whitespace-nowrap text-xs">
+                      {asset.applicationNumber}
+                    </td>
+
+                    {/* 5. Filing Date */}
+                    <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 text-[#4A6B82] whitespace-nowrap text-xs">
                       <div className="flex items-center gap-1.5">
                         <Calendar className="w-3.5 h-3.5 text-[#4A6B82] shrink-0" />
-                        <span>{asset.registrationDate}</span>
+                        <span>{asset.filingDate}</span>
                       </div>
-                    ) : (
-                      <span className="text-[#4A6B82]">-</span>
-                    )}
-                  </td>
+                    </td>
 
-                  {/* 9. Status */}
-                  <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 whitespace-nowrap">
-                    <StatusBadge status={asset.status} size="sm" />
-                  </td>
+                    {/* 6. Classes */}
+                    <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 whitespace-nowrap">
+                      {asset.classes && asset.classes !== '-' ? (
+                        <span className="inline-block px-1.5 sm:px-2 py-0.5 rounded bg-[#F5F8FA] border border-[#B2D4EB]/50 text-[#252525] font-mono text-[10px] sm:text-[11px] font-medium">
+                          {asset.classes}
+                        </span>
+                      ) : (
+                        <span className="text-[#4A6B82] text-xs">-</span>
+                      )}
+                    </td>
 
-                  {/* 10. Renewal Due Date */}
-                  <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 font-medium whitespace-nowrap text-xs">
-                    <div className="flex items-center gap-1.5">
-                      <span className={asset.status === 'Renewal Due' ? 'text-[#DC2626] font-bold' : 'text-[#252525]'}>
-                        {asset.renewalDueDate}
-                      </span>
-                    </div>
-                  </td>
+                    {/* 7. Registration Number */}
+                    <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 font-mono text-[#252525] whitespace-nowrap text-xs">
+                      {asset.registrationNumber && asset.registrationNumber !== '-' ? (
+                        asset.registrationNumber
+                      ) : (
+                        <span className="text-[#4A6B82]">-</span>
+                      )}
+                    </td>
 
-                  {/* 11. Firm/Agent */}
-                  <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 text-[#252525] whitespace-nowrap text-xs">
-                    {asset.firmAgent ? (
-                      <span className="font-medium text-[#252525]">{asset.firmAgent}</span>
-                    ) : (
-                      <span className="text-[#4A6B82]">-</span>
-                    )}
-                  </td>
+                    {/* 8. Registration Date */}
+                    <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 text-[#4A6B82] whitespace-nowrap text-xs">
+                      {asset.registrationDate && asset.registrationDate !== '-' ? (
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-[#4A6B82] shrink-0" />
+                          <span>{asset.registrationDate}</span>
+                        </div>
+                      ) : (
+                        <span className="text-[#4A6B82]">-</span>
+                      )}
+                    </td>
 
-                  {/* 12. Applicant */}
-                  <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 text-[#252525] whitespace-nowrap text-xs">
-                    {asset.applicant ? (
-                      <span className="inline-block px-2 py-0.5 rounded bg-[#F5F8FA] text-[#252525] font-medium border border-[#B2D4EB]/50 text-[11px]">
-                        {asset.applicant}
-                      </span>
-                    ) : (
-                      <span className="text-[#4A6B82]">-</span>
-                    )}
-                  </td>
+                    {/* 9. Status */}
+                    <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 whitespace-nowrap">
+                      <StatusBadge status={asset.status} size="sm" />
+                    </td>
 
-                  {/* 13. Action */}
-                  <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 text-right whitespace-nowrap">
-                    <span className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-semibold text-[#4A6B82] group-hover:text-[#1C3A50] group-hover:translate-x-0.5 transition-transform">
-                      View Profile <ChevronRight className="w-3.5 h-3.5" />
-                    </span>
-                  </td>
-                </tr>
-              ))
+                    {/* 10. Renewal Due Date */}
+                    <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 font-medium whitespace-nowrap text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <span className={asset.status === 'Renewal Due' ? 'text-[#DC2626] font-bold' : 'text-[#252525]'}>
+                          {asset.renewalDueDate}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* 11. Firm/Agent */}
+                    <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 text-[#252525] whitespace-nowrap text-xs">
+                      {asset.firmAgent ? (
+                        <span className="font-medium text-[#252525]">{asset.firmAgent}</span>
+                      ) : (
+                        <span className="text-[#4A6B82]">-</span>
+                      )}
+                    </td>
+
+                    {/* 12. Applicant */}
+                    <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 text-[#252525] whitespace-nowrap text-xs">
+                      {asset.applicant ? (
+                        <span className="inline-block px-2 py-0.5 rounded bg-[#F5F8FA] text-[#252525] font-medium border border-[#B2D4EB]/50 text-[11px]">
+                          {asset.applicant}
+                        </span>
+                      ) : (
+                        <span className="text-[#4A6B82]">-</span>
+                      )}
+                    </td>
+
+                    {/* 13. Action */}
+                    <td className="py-2.5 sm:py-3.5 px-3 sm:px-4 text-right whitespace-nowrap">
+                      {isSelectMode ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleRow(asset.id);
+                          }}
+                          className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded transition-colors ${
+                            isSelected
+                              ? 'bg-[#1C3A50] text-white'
+                              : 'bg-white text-[#4A6B82] border border-[#B2D4EB]'
+                          }`}
+                        >
+                          {isSelected ? 'Selected' : 'Select'}
+                        </button>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[11px] sm:text-xs font-semibold text-[#4A6B82] group-hover:text-[#1C3A50] group-hover:translate-x-0.5 transition-transform">
+                          View Profile <ChevronRight className="w-3.5 h-3.5" />
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {isDeleteDialogOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
+          <div className="bg-white rounded-2xl max-w-md w-full p-4 sm:p-6 shadow-2xl border border-rose-200 text-[#252525] space-y-4">
+            <div className="flex items-center gap-3 text-rose-600">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="text-base sm:text-lg font-bold text-[#252525]">
+                  Delete {selectedAssetIds.size} Selected Asset{selectedAssetIds.size > 1 ? 's' : ''}?
+                </h3>
+                <p className="text-xs text-[#4A6B82]">
+                  This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-[#4A6B82] leading-relaxed">
+              Are you sure you want to permanently remove the selected {selectedAssetIds.size} asset(s) from the portfolio database? This will update your asset statistics and sync changes with the Brand Territory Maps.
+            </p>
+
+            {/* Preview of assets being deleted */}
+            <div className="bg-[#F5F8FA] rounded-xl p-3 border border-[#B2D4EB]/40 max-h-36 overflow-y-auto space-y-1.5 text-xs">
+              <span className="text-[10px] font-bold text-[#4A6B82] uppercase tracking-wider block mb-1">
+                Assets to delete:
+              </span>
+              {selectedAssetsPreview.slice(0, 6).map((a) => (
+                <div key={a.id} className="flex items-center justify-between gap-2 text-[11px]">
+                  <span className="font-semibold text-[#252525] truncate">{a.assetName}</span>
+                  <span className="font-mono text-[#4A6B82] shrink-0">{a.applicationNumber}</span>
+                </div>
+              ))}
+              {selectedAssetsPreview.length > 6 && (
+                <p className="text-[10px] text-[#4A6B82] italic">
+                  + {selectedAssetsPreview.length - 6} more asset(s)
+                </p>
+              )}
+            </div>
+
+            {/* Modal Buttons */}
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#B2D4EB]/30">
+              <button
+                type="button"
+                onClick={() => setIsDeleteDialogOpen(false)}
+                className="px-3.5 py-2 rounded-lg text-xs font-semibold text-[#4A6B82] hover:text-[#252525] hover:bg-[#F5F8FA] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="confirm-delete-assets-btn"
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition-colors"
+              >
+                Confirm Delete ({selectedAssetIds.size})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -171,6 +171,27 @@ export default function App() {
     }
   };
 
+  // Handler: Update Entire Asset from EditAssetModal
+  const handleUpdateAsset = (updatedAsset: IPAsset) => {
+    setAssets((prev) =>
+      prev.map((item) =>
+        item.id === updatedAsset.id ? { ...updatedAsset, updatedAt: new Date().toISOString() } : item
+      )
+    );
+    if (selectedAsset && selectedAsset.id === updatedAsset.id) {
+      setSelectedAsset(updatedAsset);
+    }
+  };
+
+  // Handler: Delete Assets (Single or Multi-select)
+  const handleDeleteAssets = (assetIdsToDelete: string[]) => {
+    const idsSet = new Set(assetIdsToDelete);
+    setAssets((prev) => prev.filter((item) => !idsSet.has(item.id)));
+    if (selectedAsset && idsSet.has(selectedAsset.id)) {
+      setSelectedAsset(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#F5F8FA] text-[#252525] font-sans antialiased flex flex-col">
       {/* Top Corporate Navigation */}
@@ -193,6 +214,7 @@ export default function App() {
             onBack={() => setSelectedAsset(null)}
             onUpdateNotes={handleUpdateNotes}
             onStatusChange={handleStatusChange}
+            onUpdateAsset={handleUpdateAsset}
           />
         ) : currentView === 'dashboard' ? (
           // Main Dashboard: Metrics + Searchable IP Assets Table
@@ -200,24 +222,27 @@ export default function App() {
             {/* Metric Cards showing Total Active assets and total portfolio */}
             <MetricCards metrics={metrics} />
 
-            {/* Database Table: IP Assets */}
+            {/* Database Table */}
             <AssetTable
               assets={assets}
               onSelectAsset={(asset) => setSelectedAsset(asset)}
               onOpenAddModal={() => setIsAddModalOpen(true)}
               filterBrand={filterBrand}
               onFilterBrandChange={(brand) => setFilterBrand(brand)}
+              onDeleteAssets={handleDeleteAssets}
             />
           </div>
         ) : (
           // Brand World Map Page (UNIQ / Skinarma / Energea with Green Registered & Yellow Pending)
           <BrandWorldMap
             initialBrand="UNIQ"
+            assets={assets}
             customMapStatus={dynamicBrandMaps}
             onSelectCountry={(countryCode) => {
               // Switch to dashboard and filter by country if desired
               setFilterBrand('All');
             }}
+            onSelectAsset={(asset) => setSelectedAsset(asset)}
           />
         )}
       </main>

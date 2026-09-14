@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { IPAsset } from '../types';
 import { StatusBadge } from './StatusBadge';
 import { IPTypeBadge } from './IPTypeBadge';
+import { EditAssetModal } from './EditAssetModal';
 import {
   ArrowLeft,
   Calendar,
@@ -21,6 +22,7 @@ interface AssetProfileProps {
   onBack: () => void;
   onUpdateNotes: (assetId: string, updatedNotes: string) => void;
   onStatusChange: (assetId: string, newStatus: IPAsset['status']) => void;
+  onUpdateAsset?: (updatedAsset: IPAsset) => void;
 }
 
 export const AssetProfile: React.FC<AssetProfileProps> = ({
@@ -28,9 +30,11 @@ export const AssetProfile: React.FC<AssetProfileProps> = ({
   onBack,
   onUpdateNotes,
   onStatusChange,
+  onUpdateAsset,
 }) => {
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [editedNotes, setEditedNotes] = useState(asset.notes);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const handleSaveNotes = () => {
     onUpdateNotes(asset.id, editedNotes);
@@ -68,6 +72,17 @@ export const AssetProfile: React.FC<AssetProfileProps> = ({
             </select>
           </div>
           <StatusBadge status={asset.status} size="sm" />
+
+          {/* Edit Asset Button in Top Right Hand Corner Next to Status */}
+          <button
+            id="edit-asset-header-btn"
+            onClick={() => setIsEditModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-[#B2D4EB] hover:bg-[#9fc8e3] text-[#1C3A50] border border-[#9fc8e3] shadow-xs transition-colors"
+            title="Edit all information for this asset in one popup"
+          >
+            <Edit3 className="w-3.5 h-3.5" />
+            <span>Edit Asset</span>
+          </button>
         </div>
       </div>
 
@@ -330,6 +345,19 @@ export const AssetProfile: React.FC<AssetProfileProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Full Information Edit Asset Popup */}
+      <EditAssetModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        asset={asset}
+        onSave={(updatedAsset) => {
+          if (onUpdateAsset) {
+            onUpdateAsset(updatedAsset);
+          }
+          setEditedNotes(updatedAsset.notes);
+        }}
+      />
     </div>
   );
 };
