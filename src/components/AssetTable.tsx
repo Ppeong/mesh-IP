@@ -340,8 +340,8 @@ export const AssetTable: React.FC<AssetTableProps> = ({
               className="w-full px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-[#B2D4EB] text-xs text-[#252525] bg-white focus:outline-none focus:ring-2 focus:ring-[#B2D4EB] focus:border-[#4A6B82]"
             >
               <option value="All">All IP Types</option>
-              <option value="Patent">Patent</option>
               <option value="Trademark">Trademark</option>
+              <option value="Patent">Patent</option>
               <option value="Design">Design</option>
             </select>
           </div>

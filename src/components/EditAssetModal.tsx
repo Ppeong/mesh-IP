@@ -212,8 +212,8 @@ export const EditAssetModal: React.FC<EditAssetModalProps> = ({ isOpen, onClose,
                 onChange={(e) => setIpType(e.target.value as IPType)}
                 className="w-full px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-lg border border-[#B2D4EB]/70 focus:outline-none focus:ring-2 focus:ring-[#B2D4EB] focus:border-[#4A6B82] text-xs sm:text-sm text-[#252525] bg-white"
               >
-                <option value="Patent">Patent</option>
                 <option value="Trademark">Trademark</option>
+                <option value="Patent">Patent</option>
                 <option value="Design">Design</option>
               </select>
             </div>

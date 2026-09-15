@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { IPAsset, IPType, IPStatus, BrandName } from '../types';
 import { COUNTRY_OPTIONS } from '../mockData';
 import { X, Upload, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
@@ -11,7 +11,7 @@ interface AddAssetModalProps {
 
 export const AddAssetModal: React.FC<AddAssetModalProps> = ({ isOpen, onClose, onAdd }) => {
   const [assetName, setAssetName] = useState('');
-  const [ipType, setIpType] = useState<IPType>('Patent');
+  const [ipType, setIpType] = useState<IPType>('Trademark');
   const [brand, setBrand] = useState<BrandName>('UNIQ');
   const [applicationNumber, setApplicationNumber] = useState('');
   const [country, setCountry] = useState('Singapore');
@@ -35,8 +35,49 @@ export const AddAssetModal: React.FC<AddAssetModalProps> = ({ isOpen, onClose, o
   const [documentType, setDocumentType] = useState<string>('');
   const [dragActive, setDragActive] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const resetForm = () => {
+    setAssetName('');
+    setIpType('Trademark');
+    setBrand('UNIQ');
+    setApplicationNumber('');
+    setCountry('Singapore');
+    setCountryCode('SG');
+    setFilingDate(new Date().toISOString().split('T')[0]);
+    setClasses('');
+    setRegistrationNumber('');
+    setRegistrationDate('');
+    setRenewalDueDate(
+      new Date(Date.now() + 365 * 24 * 60 * 60 * 1000 * 3).toISOString().split('T')[0]
+    );
+    setFirmAgent('');
+    setApplicant('');
+    setStatus('Registered');
+    setNotes('');
+    setDocumentName('');
+    setDocumentDataUrl('');
+    setDocumentSize('');
+    setDocumentType('');
+    setDragActive(false);
+    setErrorMsg('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      resetForm();
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
 
   const handleCountryChange = (selectedName: string) => {
     setCountry(selectedName);
@@ -114,6 +155,7 @@ export const AddAssetModal: React.FC<AddAssetModalProps> = ({ isOpen, onClose, o
       documentType: documentType || undefined,
     });
 
+    resetForm();
     onClose();
   };
 
@@ -130,11 +172,10 @@ export const AddAssetModal: React.FC<AddAssetModalProps> = ({ isOpen, onClose, o
         <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-[#B2D4EB]/40 bg-[#F5F8FA]">
           <div className="min-w-0">
             <h2 className="text-base sm:text-lg font-bold text-[#252525]">Add New IP Asset</h2>
-            <p className="text-[11px] sm:text-xs text-[#4A6B82] truncate">Register a new Patent, Trademark, or Design to your portfolio</p>
           </div>
           <button
             id="close-add-modal-btn"
-            onClick={onClose}
+            onClick={handleClose}
             className="p-1.5 rounded-lg text-[#4A6B82] hover:text-[#252525] hover:bg-white/80 transition-colors shrink-0"
           >
             <X className="w-5 h-5" />
@@ -178,8 +219,8 @@ export const AddAssetModal: React.FC<AddAssetModalProps> = ({ isOpen, onClose, o
                 onChange={(e) => setIpType(e.target.value as IPType)}
                 className="w-full px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-lg border border-[#B2D4EB]/70 focus:outline-none focus:ring-2 focus:ring-[#B2D4EB] focus:border-[#4A6B82] text-xs sm:text-sm text-[#252525] bg-white"
               >
-                <option value="Patent">Patent</option>
                 <option value="Trademark">Trademark</option>
+                <option value="Patent">Patent</option>
                 <option value="Design">Design</option>
               </select>
             </div>
@@ -205,7 +246,7 @@ export const AddAssetModal: React.FC<AddAssetModalProps> = ({ isOpen, onClose, o
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
               <label className="block text-[11px] sm:text-xs font-semibold text-[#252525] uppercase tracking-wider mb-1">
-                Application / Registration No. <span className="text-red-500">*</span>
+                Application No. <span className="text-red-500">*</span>
               </label>
               <input
                 id="input-app-number"
@@ -390,6 +431,7 @@ export const AddAssetModal: React.FC<AddAssetModalProps> = ({ isOpen, onClose, o
               }`}
             >
               <input
+                ref={fileInputRef}
                 id="file-upload-input"
                 type="file"
                 accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
@@ -437,7 +479,7 @@ export const AddAssetModal: React.FC<AddAssetModalProps> = ({ isOpen, onClose, o
             <button
               type="button"
               id="cancel-add-btn"
-              onClick={onClose}
+              onClick={handleClose}
               className="px-3.5 sm:px-4 py-2 rounded-lg text-xs font-semibold text-[#4A6B82] hover:text-[#1C3A50] hover:bg-[#F5F8FA] transition-colors"
             >
               Cancel
